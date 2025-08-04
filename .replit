@@ -35,3 +35,7 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "make && ./udp_graph_monitor -h"
+
+[[ports]]
+localPort = 4322
+externalPort = 80
