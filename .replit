@@ -1,0 +1,36 @@
+modules = ["cpp"]
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "UDP Graph Monitor"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "udp_graph_test"
+
+[[workflows.workflow]]
+name = "UDP Graph Monitor"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "make clean && make && ./udp_graph_monitor -p 5000"
+
+[[workflows.workflow]]
+name = "udp_graph_test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "make && ./udp_graph_monitor -h"
