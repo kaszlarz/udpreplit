@@ -2,6 +2,7 @@ modules = ["cpp"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["netcat"]
 
 [workflows]
 runButton = "Project"
