@@ -4,21 +4,40 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <chrono>
 
-TerminalGraph::TerminalGraph(int w, int h, int minutes, int interval_sec) 
+TerminalGraph::TerminalGraph(int w, int h, int minutes) 
     : width(w), height(h), min_value(0), max_value(100), 
-      time_window_minutes(minutes), data_interval_seconds(interval_sec) {
+      time_window_minutes(minutes), avg_interval_seconds(1.0), last_data_time(0) {
     calculateMaxPoints();
     // Reserve space for efficiency
     data_points.reserve(max_points);
+    timestamps.reserve(max_points);
 }
 
 void TerminalGraph::addDataPoint(double value) {
-    data_points.push_back(value);
+    long long current_time = getCurrentTimeMs();
     
-    // Remove old points if we exceed maximum
-    if (data_points.size() > max_points) {
-        data_points.erase(data_points.begin());
+    data_points.push_back(value);
+    timestamps.push_back(current_time);
+    
+    // Update interval calculation
+    updateInterval();
+    
+    // Remove old points based on time window or max points
+    if (time_window_minutes > 0) {
+        // Remove points older than time window
+        long long cutoff_time = current_time - (time_window_minutes * 60 * 1000);
+        while (!timestamps.empty() && timestamps[0] < cutoff_time) {
+            data_points.erase(data_points.begin());
+            timestamps.erase(timestamps.begin());
+        }
+    } else {
+        // Remove old points if we exceed maximum
+        if (data_points.size() > max_points) {
+            data_points.erase(data_points.begin());
+            timestamps.erase(timestamps.begin());
+        }
     }
     
     updateMinMax();
@@ -81,26 +100,36 @@ std::string TerminalGraph::formatValue(double value) const {
 }
 
 void TerminalGraph::render() const {
+    // Calculate the graph area dimensions first
+    int graph_width = width - 12; // Leave more space for Y-axis labels
+    int graph_height = height - 7; // Leave space for header, footer and margins
+    
+    // Ensure minimum graph size
+    if (graph_width < 20) graph_width = 20;
+    if (graph_height < 5) graph_height = 5;
+    
     // Clear the area we're going to draw
-    for (int i = 0; i < height + 4; ++i) {
+    int total_lines = graph_height + 6; // header(3) + graph + footer(2) + margin
+    for (int i = 0; i < total_lines; ++i) {
         std::cout << "\033[K\n"; // Clear line and move to next
     }
-    std::cout << "\033[" << (height + 4) << "A"; // Move cursor back up
+    std::cout << "\033[" << total_lines << "A"; // Move cursor back up
     
-    // Title
-    std::cout << "\033[1m" << "Real-time UDP Data Graph" << "\033[0m";
+    // Title - keep it short to fit in terminal width
+    std::cout << "\033[1m" << "UDP Graph";
     if (time_window_minutes > 0) {
-        std::cout << " (" << time_window_minutes << " min window)";
+        std::cout << " (" << time_window_minutes << "m)";
     }
-    std::cout << std::endl;
+    std::cout << "\033[0m" << std::endl;
     
-    std::cout << "Terminal: " << width << "x" << height << " | Points: " << data_points.size() << "/" << max_points;
+    // Status line - truncated to fit terminal width
+    std::cout << "Pts:" << data_points.size() << "/" << max_points;
     if (!data_points.empty()) {
-        std::cout << " | Range: " << formatValue(min_value) << " to " << formatValue(max_value);
-        std::cout << " | Latest: " << formatValue(data_points.back());
-    }
-    if (time_window_minutes > 0) {
-        std::cout << " | Interval: " << data_interval_seconds << "s";
+        std::cout << " Range:" << formatValue(min_value) << "-" << formatValue(max_value);
+        std::cout << " Last:" << formatValue(data_points.back());
+        if (avg_interval_seconds > 0) {
+            std::cout << " Int:" << std::fixed << std::setprecision(1) << avg_interval_seconds << "s";
+        }
     }
     std::cout << std::endl << std::endl;
     
@@ -108,10 +137,6 @@ void TerminalGraph::render() const {
         std::cout << "Waiting for data..." << std::endl;
         return;
     }
-    
-    // Calculate the graph area dimensions
-    int graph_width = width - 10; // Leave space for Y-axis labels
-    int graph_height = height - 2; // Leave space for X-axis
     
     // Draw the graph from top to bottom
     for (int row = 0; row < graph_height; ++row) {
@@ -152,28 +177,26 @@ void TerminalGraph::render() const {
     }
     
     // X-axis
-    std::cout << "         +";
+    std::cout << "      +";
     for (int i = 0; i < graph_width; ++i) {
         std::cout << "-";
     }
     std::cout << std::endl;
     
-    // X-axis labels (time indicators)
-    std::cout << "          ";
-    for (int i = 0; i < graph_width; i += 10) {
-        if (i == 0) {
-            std::cout << "oldest";
-        } else if (i >= graph_width - 6) {
-            std::cout << "latest";
-            break;
-        } else {
-            std::cout << "|";
-        }
-        
-        // Add spacing
-        int spacing = (i == 0) ? 10 - 6 : 9;
-        for (int j = 0; j < spacing && i + j + 1 < graph_width; ++j) {
+    // X-axis labels (time indicators) - shortened to fit
+    std::cout << "       ";
+    if (graph_width >= 15) {
+        std::cout << "old";
+        int middle_pos = graph_width / 2 - 1;
+        for (int i = 3; i < middle_pos; ++i) {
             std::cout << " ";
+        }
+        std::cout << "|";
+        for (int i = middle_pos + 1; i < graph_width - 3; ++i) {
+            std::cout << " ";
+        }
+        if (graph_width >= graph_width - 3) {
+            std::cout << "new";
         }
     }
     std::cout << std::endl;
@@ -181,30 +204,54 @@ void TerminalGraph::render() const {
 
 void TerminalGraph::clear() {
     data_points.clear();
+    timestamps.clear();
     min_value = 0;
     max_value = 100;
+    avg_interval_seconds = 1.0;
+    last_data_time = 0;
 }
 
 void TerminalGraph::calculateMaxPoints() {
     if (time_window_minutes > 0) {
-        // Calculate based on time window and data interval
-        // If user wants 60 minutes and data comes every 1 second:
-        // max_points = 60 * 60 / 1 = 3600 points
-        max_points = (time_window_minutes * 60) / data_interval_seconds;
-        
-        // Ensure we don't exceed graph width
-        size_t graph_width = width - 10; // Leave space for Y-axis labels
-        if (max_points > graph_width) {
-            max_points = graph_width;
-        }
+        // For time-based mode, allow many more points
+        // They'll be filtered by time window in addDataPoint
+        max_points = time_window_minutes * 60 * 10; // Allow up to 10 points per second
     } else {
         // Auto-detect based on terminal width (original behavior)
-        max_points = width - 10;
+        max_points = width - 12;
     }
     
-    // Ensure minimum of 10 points
-    if (max_points < 10) {
-        max_points = 10;
+    // Ensure reasonable bounds
+    if (max_points < 20) max_points = 20;
+    if (max_points > 10000) max_points = 10000; // Reasonable memory limit
+}
+
+long long TerminalGraph::getCurrentTimeMs() const {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+}
+
+void TerminalGraph::updateInterval() {
+    if (timestamps.size() < 2) {
+        return;
+    }
+    
+    // Calculate average interval from last 10 data points
+    size_t start_idx = timestamps.size() > 10 ? timestamps.size() - 10 : 0;
+    double total_intervals = 0;
+    int count = 0;
+    
+    for (size_t i = start_idx + 1; i < timestamps.size(); ++i) {
+        double interval = (timestamps[i] - timestamps[i-1]) / 1000.0; // Convert to seconds
+        if (interval > 0.01 && interval < 300) { // Reasonable bounds: 10ms to 5 minutes
+            total_intervals += interval;
+            count++;
+        }
+    }
+    
+    if (count > 0) {
+        avg_interval_seconds = total_intervals / count;
     }
 }
 
@@ -213,11 +260,13 @@ void TerminalGraph::updateTerminalSize(int w, int h) {
     height = h;
     calculateMaxPoints();
     
-    // Resize data_points if needed
-    if (data_points.size() > max_points) {
+    // Resize data_points if needed (only for non-time-based mode)
+    if (time_window_minutes == 0 && data_points.size() > max_points) {
         // Remove old points to fit new size
-        data_points.erase(data_points.begin(), 
-                         data_points.begin() + (data_points.size() - max_points));
+        size_t to_remove = data_points.size() - max_points;
+        data_points.erase(data_points.begin(), data_points.begin() + to_remove);
+        timestamps.erase(timestamps.begin(), timestamps.begin() + to_remove);
     }
     data_points.reserve(max_points);
+    timestamps.reserve(max_points);
 }
