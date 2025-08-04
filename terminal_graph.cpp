@@ -5,8 +5,10 @@
 #include <cmath>
 #include <sstream>
 
-TerminalGraph::TerminalGraph(int w, int h) 
-    : width(w), height(h), max_points(w - 10), min_value(0), max_value(100) {
+TerminalGraph::TerminalGraph(int w, int h, int minutes, int interval_sec) 
+    : width(w), height(h), min_value(0), max_value(100), 
+      time_window_minutes(minutes), data_interval_seconds(interval_sec) {
+    calculateMaxPoints();
     // Reserve space for efficiency
     data_points.reserve(max_points);
 }
@@ -86,11 +88,19 @@ void TerminalGraph::render() const {
     std::cout << "\033[" << (height + 4) << "A"; // Move cursor back up
     
     // Title
-    std::cout << "\033[1m" << "Real-time UDP Data Graph" << "\033[0m" << std::endl;
-    std::cout << "Points: " << data_points.size() << "/" << max_points;
+    std::cout << "\033[1m" << "Real-time UDP Data Graph" << "\033[0m";
+    if (time_window_minutes > 0) {
+        std::cout << " (" << time_window_minutes << " min window)";
+    }
+    std::cout << std::endl;
+    
+    std::cout << "Terminal: " << width << "x" << height << " | Points: " << data_points.size() << "/" << max_points;
     if (!data_points.empty()) {
         std::cout << " | Range: " << formatValue(min_value) << " to " << formatValue(max_value);
         std::cout << " | Latest: " << formatValue(data_points.back());
+    }
+    if (time_window_minutes > 0) {
+        std::cout << " | Interval: " << data_interval_seconds << "s";
     }
     std::cout << std::endl << std::endl;
     
@@ -173,4 +183,41 @@ void TerminalGraph::clear() {
     data_points.clear();
     min_value = 0;
     max_value = 100;
+}
+
+void TerminalGraph::calculateMaxPoints() {
+    if (time_window_minutes > 0) {
+        // Calculate based on time window and data interval
+        // If user wants 60 minutes and data comes every 1 second:
+        // max_points = 60 * 60 / 1 = 3600 points
+        max_points = (time_window_minutes * 60) / data_interval_seconds;
+        
+        // Ensure we don't exceed graph width
+        size_t graph_width = width - 10; // Leave space for Y-axis labels
+        if (max_points > graph_width) {
+            max_points = graph_width;
+        }
+    } else {
+        // Auto-detect based on terminal width (original behavior)
+        max_points = width - 10;
+    }
+    
+    // Ensure minimum of 10 points
+    if (max_points < 10) {
+        max_points = 10;
+    }
+}
+
+void TerminalGraph::updateTerminalSize(int w, int h) {
+    width = w;
+    height = h;
+    calculateMaxPoints();
+    
+    // Resize data_points if needed
+    if (data_points.size() > max_points) {
+        // Remove old points to fit new size
+        data_points.erase(data_points.begin(), 
+                         data_points.begin() + (data_points.size() - max_points));
+    }
+    data_points.reserve(max_points);
 }

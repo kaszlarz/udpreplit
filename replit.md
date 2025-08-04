@@ -15,6 +15,8 @@ Multi-parameter monitoring: User interested in displaying multiple INA226 sensor
 - **Single-threaded C++ application** using standard library components for maximum portability
 - **Terminal-based rendering** using ANSI escape codes for cross-platform compatibility without external graphics libraries
 - **Real-time data processing** with continuous UDP listening and immediate graph updates
+- **Dynamic terminal size detection** using ioctl(TIOCGWINSZ) with automatic resizing support (minimum 80x20)
+- **Configurable time windows** via -m parameter for minutes-based data retention
 
 ### Network Communication
 - **UDP server architecture** listening on configurable port (default: 4322)
@@ -34,6 +36,7 @@ Multi-parameter monitoring: User interested in displaying multiple INA226 sensor
 
 ### Error Handling and Control
 - **Graceful shutdown mechanism** with signal handling for Ctrl+C interruption
+- **Terminal resize handling** via SIGWINCH signal for dynamic adaptation
 - **Cross-platform design** focused on Linux/POSIX environments
 
 ## External Dependencies
