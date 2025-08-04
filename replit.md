@@ -7,6 +7,7 @@ UDP Graph Monitor is a real-time terminal-based graph visualization tool written
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Multi-parameter monitoring: User interested in displaying multiple INA226 sensor values (voltage, current, power) simultaneously.
 
 ## System Architecture
 
